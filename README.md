@@ -1,14 +1,6 @@
 # NTSB Safety-Recommendation Review Agent
 
-**Fine-tuning taught the agent the steps. It did not teach it the judgment.**
-
-- Verified task success: **1% → 25%**
-- Finished the review: **5% → 88%**
-- Grade accuracy: **27% → 26%** (no change)
-
-The next fix is reinforcement learning.
-
-![Before vs after: the steps were learned, the judgment was not](before_after.png)
+**One-line claim:** Agentic fine-tuning turned Tiny Aya Global into a compliance-review agent that runs the full workflow (read the case, check evidence, draft, pass the rules, send for human approval) in 88% of cases instead of 5%, raising verified task success from 1% to 25%.
 
 ## Tracks and problem statements covered
 - Track 3, Agentic fine-tuning
@@ -54,7 +46,15 @@ Grade accuracy did not improve (27% before, 26% after) and stays below simply co
 
 Same 300 test cases. Same code, prompt, tools and GPU for both.
 
-**In one line:** how it works got much better. The grade did not.
+![Before vs after fine-tuning on 300 held-out cases](before_after.png)
+
+**Main result**
+- The agent now completes the review workflow: right steps, real evidence, rules passed, human approval.
+- Errors that broke the workflow (looping, fake quotes) dropped sharply.
+
+**Open problem**
+- The grade decision itself did not improve (27% → 26%).
+- Why, and how to fix it: see Findings 3 and 4.
 
 ---
 
@@ -359,44 +359,21 @@ Same for v1 and v2.
 ---
 
 ### Findings
-#### 1. It learned the steps, not the judgment
+#### 1. Fine-tuning made the workflow reliable
 **The steps went from almost never to almost always**
 - Finished: 5% → 88%
 - Right step order: 8% → 88%
 - Tool-call F1: 0.58 → 0.93
 
-**The judgment didn't move**
-- Grade accuracy: 27% → 26%
+**The errors that broke the workflow dropped**
+- Stuck repeating: 92% → 9%
+- Fake quotes: 43% → 9%
+- Guardrail violations: 0.03 → 0 per case
 
-**Why**
-- Supervised training copies the whole run.
-- The grade is less than 1% of the tokens it learns from.
-- So it learned what a review looks like, not how to decide one.
+**And it got faster**
+- 33 s → 21 s per case
 
-#### 2. It isn't a reading or consistency problem
-We tested the obvious causes.
-
-**"Maybe its grade doesn't follow its own reasons"**
-- If it always did: 26% → 28%
-- Only +2 points
-
-**"Maybe it doesn't read enough"**
-- Read every letter: 28%
-- Skipped some: 24%
-- Long cases (5+ letters): 17%
-
-**"Maybe it's stuck on one wrong grade"**
-- No. Errors are spread across all 7 grades.
-
-**What's actually missing:** understanding what a reply commits to.
-
-#### 3. Judgment needs feedback on its own answers
-- Supervised training only shows the right answer.
-- The model never makes a call and finds out if it was wrong.
-- We already have an automatic checker: NTSB's real grade.
-- That makes this a natural fit for reinforcement learning.
-
-#### 4. What the training targets look like matters
+#### 2. What the training targets look like matters
 **v1**
 - Trained to write NTSB's real letters (long, full of facts it never sees)
 - Result: it looped while writing
@@ -406,6 +383,34 @@ We tested the obvious causes.
 - Short fixed letter + recovery runs
 - Looping almost gone
 - Finished: +47 points
+
+#### 3. The grade decision did not improve
+- Grade accuracy: 27% → 26%
+- Supervised training copies the whole run.
+- The grade is less than 1% of the tokens it learns from.
+- So it learned what a review looks like, not how to decide one.
+
+**We ruled out the obvious causes**
+
+"Maybe its grade doesn't follow its own reasons"
+- If it always did: 26% → 28%
+- Only +2 points
+
+"Maybe it doesn't read enough"
+- Read every letter: 28%
+- Skipped some: 24%
+- Long cases (5+ letters): 17%
+
+"Maybe it's stuck on one wrong grade"
+- No. Errors are spread across all 7 grades.
+
+**What's actually missing:** understanding what a reply commits to.
+
+#### 4. The fix: feedback on its own answers
+- Supervised training only shows the right answer.
+- The model never makes a call and finds out if it was wrong.
+- We already have an automatic checker: NTSB's real grade.
+- That makes this a natural fit for reinforcement learning (see With more credits).
 
 ---
 
@@ -633,7 +638,7 @@ Both of us worked on everything together:
 - Follows the recommended layout
 - Added a results chart and two diagram images
 - Rewritten for skimming: short lines, numbers on their own lines
-- Findings now lead with the main result: steps learned, judgment not
+- Leads with the workflow result; the grade decision is covered in Findings 3 and 4
 - RL plan is the main next step
 - All numbers unchanged
 

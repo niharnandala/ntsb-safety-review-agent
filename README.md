@@ -2,11 +2,14 @@
 
 **One-line claim:** We trained a small open AI model (Tiny Aya Global) to do a real government review job. Before our training it finished the job in **5 out of 100** cases. After our training it finishes **88 out of 100**, tested on 300 cases it had never seen.
 
-**What makes this one different**
-- **A real government workflow:** grading replies to US transport-safety recommendations (NTSB), a job analysts do by hand today
-- **Real public data:** 21,209 cases built from NTSB's own records. Nothing made up, and no test case was seen in training
-- **Safety built into the tools:** there is no approve tool, every call is logged, and a human signs off
-- **Measured fairly:** the same 300 test cases before and after training, checked with statistics and with AuditKIT
+**Why this one is different**
+- 🎯 **Empty niche:** we couldn't find any published AI agent doing this job
+- 🏛️ **Real government work:** NTSB analysts still do this by hand
+- 💼 **Big market:** every regulator and compliance team has the same problem
+- 🧾 **Audit-ready:** every action is logged, every quote is checked word for word
+- 🔒 **Safe by design:** it can't approve itself, a human always signs off
+- 💰 **Cheap:** about $15 per 1,000 reviews on one GPU
+- 📊 **Real data:** 21,209 real NTSB cases, tested on 300 it never saw
 
 ## Tracks and problem statements covered
 - Track 3, Agentic fine-tuning
@@ -14,7 +17,7 @@
 
 ## Contents
 - [Abstract](#abstract)
-- [Headline number](#headline-number)
+- [Headline before → after number](#headline-before--after-number)
 - [Base model and method](#base-model-and-method)
 - [For judges: one minute](#for-judges-one-minute)
 - [Problem statement and approach](#problem-statement-and-approach)
@@ -41,7 +44,7 @@
 - [Documentation and reproduction](#documentation-and-reproduction)
 - [Declaration of work done outside the hackathon](#declaration-of-work-done-outside-the-hackathon)
 - [Discussion: what we learned](#discussion-what-we-learned)
-- [Team](#team)
+- [Teammates](#teammates)
 - [Author contributions](#author-contributions)
 - [Acknowledgements](#acknowledgements)
 - [References](#references)
@@ -58,7 +61,7 @@ From public NTSB records we built 21,209 cases, and kept 300 aside for testing t
 
 The Limitations section lists what it can't do yet, and the next step uses reinforcement learning in AgentTune.
 
-## Headline number
+## Headline before → after number
 **Reviews completed: 5% before training, 88% after**
 
 - Tested on 300 cases the model never saw in training
@@ -699,7 +702,7 @@ Forecast, not measured.
 **Future work**
 - See With more credits: STaR, then GRPO in AgentTune.
 
-## Team
+## Teammates
 - Nihar Nandala (GitHub / HF: [niharnandala](https://huggingface.co/niharnandala))
 - Dhanush S (GitHub: [dhanush-sathish](https://github.com/dhanush-sathish), HF: [Dhanush77zz](https://huggingface.co/Dhanush77zz))
 

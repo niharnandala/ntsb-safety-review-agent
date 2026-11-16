@@ -1,2 +1,7 @@
+agenttune @ git+https://github.com/Lexsi-Labs/AgentTune.git
 rank_bm25
 transformers
+peft
+datasets
+huggingface_hub
+auditkit

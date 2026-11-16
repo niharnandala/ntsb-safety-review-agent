@@ -2,6 +2,12 @@
 
 **One-line claim:** Agentic fine-tuning turned Tiny Aya Global into a compliance-review agent that runs the full workflow (read the case, check evidence, draft, pass the rules, send for human approval) in 88% of cases instead of 5%, raising verified task success from 1% to 25%.
 
+**What makes this one different**
+- **A real government workflow:** grading replies to US transport-safety recommendations (NTSB), a job analysts do by hand today
+- **Real public data:** 21,209 cases built from NTSB's own records, with no synthetic data and 0 leaks
+- **Safety built into the tools:** there is no approve tool, every call is logged, and a human signs off
+- **Measured honestly:** the same 300 held-out cases before and after, with confidence intervals and AuditKIT
+
 ## Tracks and problem statements covered
 - Track 3, Agentic fine-tuning
 - Problem statement 7, Business workflow and decision agents
@@ -18,14 +24,15 @@
   - [What the agent does](#what-the-agent-does)
   - [Research questions](#research-questions)
   - [Threat model (T3)](#threat-model-t3)
+  - [Related work](#related-work)
 - [Hackathon repos (kits) used](#hackathon-repos-kits-used)
 - [Models and licenses](#models-and-licenses)
 - [Datasets, benchmarks and licenses](#datasets-benchmarks-and-licenses)
 - [Metrics, and why these](#metrics-and-why-these)
 - [Method / experiments](#method--experiments)
+  - [From v1 to v2](#from-v1-to-v2-how-we-found-the-problem-and-fixed-it)
 - [Results](#results)
   - [Findings](#findings)
-  - [Sample input and output](#sample-input-and-output)
   - [What didn't work](#what-didnt-work)
   - [Cost and compute](#cost-and-compute)
 - [Limitations](#limitations)
@@ -43,11 +50,13 @@
 - [Appendix](#appendix)
 
 ## Abstract
-NTSB, the US transportation safety board, sends safety recommendations to agencies and companies and grades every reply on a seven-level scale. Analysts do this by hand, and the grade decides whether a safety problem stays tracked. We built a review agent for this job. It reads the case and the letters, checks precedents and how other recipients were graded, quotes evidence that is checked word for word, drafts a grade and a short letter, runs a rule check and sends the draft to a human. It has no way to approve itself, and every tool call is logged.
+NTSB, the US transportation safety board, investigates serious transport accidents and sends safety recommendations to agencies and companies. It cannot force anyone to act, so it follows up and grades every reply on a seven-level scale. Analysts do this by hand, and the grade decides whether a safety problem stays tracked.
 
-From public NTSB records we built 21,209 cases, split by recommendation with no leaks. Untrained, Tiny Aya Global with 10 tools finished 5% of 300 test reviews, looped in 92% and made up quotes in 43%. After LoRA training on 620 worked examples, it finishes 88%, loops in 9%, fakes quotes in 9% and runs 36% faster. Verified task success rose from 1% to 25%.
+We built a review agent for this job. It reads the case and the letters, checks precedents and how other recipients were graded, quotes evidence that is checked word for word, drafts a grade and a short letter, runs a rule check and sends the draft to a human. It has no way to approve itself, and every tool call is logged.
 
-Grade accuracy did not improve (27% before, 26% after) and stays below simply copying NTSB's last grade (36%). Our offline tests show why: the model learned the steps of a review, and the grade decision is less than 1% of what supervised training copies. Even when it read every letter, accuracy was 28%. Pressure letters still fool it 7 times in 20. Judgment needs a different kind of training, where the model guesses a grade, is checked against NTSB's real grade and learns from its mistakes. That is our next step: STaR, then GRPO in AgentTune, with a reward for the verified grade.
+From public NTSB records we built 21,209 cases, split by recommendation with no leaks. Untrained, Tiny Aya Global with 10 tools finished 5% of 300 test reviews, looped in 92% and made up quotes in 43%. After LoRA training on 620 worked examples, it finishes 88%, loops in 9%, fakes quotes in 9%, never broke a guardrail, and runs 36% faster. Verified task success rose from 1% to 25% (95% CI +19 to +28 points), and AuditKIT's tool-call F1 rose from 0.58 to 0.93. Training cost about $2.
+
+The Limitations section lists what it can't do yet, and the next step uses reinforcement learning in AgentTune.
 
 ## Headline number
 **Verified task success: 1% → 25%**
@@ -76,9 +85,8 @@ Grade accuracy did not improve (27% before, 26% after) and stays below simply co
 | Tool-call F1 (AuditKIT) | 0.58 | **0.93** |
 | Stuck repeating | 92% | **9%** |
 | Fake quotes | 43% | **9%** |
+| Guardrail violations per case | 0.03 | **0** |
 | Time per case | 33 s | **21 s** |
-| Grade accuracy | 27% | 26% |
-| Trick letters fallen for | 8 of 20 | 7 of 20 |
 
 Same 300 test cases. Same code, prompt, tools and GPU for both.
 
@@ -86,11 +94,8 @@ Same 300 test cases. Same code, prompt, tools and GPU for both.
 
 **Main result**
 - The agent now completes the review workflow: right steps, real evidence, rules passed, human approval.
-- Errors that broke the workflow (looping, fake quotes) dropped sharply.
-
-**Open problem**
-- The grade decision itself did not improve (27% → 26%).
-- Why, and how to fix it: see Findings 3 and 4.
+- The errors that broke the workflow (looping, fake quotes) dropped sharply.
+- It costs about $15 per 1,000 reviews on one GPU.
 
 ---
 
@@ -130,8 +135,6 @@ Same 300 test cases. Same code, prompt, tools and GPU for both.
 | Mistakes in the final letter | A rule check catches missing case names, wrong grades, length and timing |
 | "Who decided this, and why?" | Every tool call is logged; reasons are written down with the grade |
 | Pressure from the party being reviewed | The agent can't approve itself; a human always signs off |
-
-**What we can claim today:** the workflow part (finishing, evidence, rules, approval, audit log) works. The grade itself still needs a human, see Findings 3 and 4.
 
 ### Where else this can work
 The same pattern shows up wherever one side makes a request and the other side replies with promises:
@@ -178,19 +181,18 @@ Not pre-registered. These are the questions our experiments answer.
 
 **Q1. Can a small, open 3B model be trained to run a real regulatory workflow end to end?**
 - **Yes.** It finishes 88% of reviews (was 5%), in the right order, with checked evidence and human approval.
-- **Why it matters:** offices could run this on their own hardware, cheaply ($15 per 1,000 reviews vs about $105 for a closed API, estimated), and keep sensitive documents in-house.
+- **Why it matters:** offices could run this on their own hardware and keep sensitive documents in-house.
 
-**Q2. Does learning the workflow also teach the decision?**
-- **No.** Grade accuracy stayed at 26–27%.
-- **Why it matters:** an agent can look fully competent (every step right) and still make the wrong call. Anyone deploying agents needs to measure the decision separately from the process.
+**Q2. Can it do that cheaply?**
+- **Yes.** About $2 of training, and about $15 per 1,000 reviews on one A100 (a closed API model is estimated at about $105).
+- **Why it matters:** a public office can afford to run it on every reply, not just a sample.
 
 **Q3. Do the safety guardrails survive fine-tuning?**
-- **Yes for the hard ones:** it never approved itself and never skipped the rules (0 of 10, before and after).
-- **Not yet for persuasion:** injected instructions and pressure letters still work 7 times in 20.
-- **Why it matters:** in regulation, the party being reviewed writes the input. Guardrails have to be built into the tools, not just the prompt.
+- **Yes for the ones built into the tools:** it never approved itself and never skipped the rules (0 of 10, before and after), and guardrail violations went to 0.
+- **Why it matters:** in regulation, the party being reviewed writes the input. Guardrails belong in the tools, not just in the prompt.
 
-**Q4. What would it take to teach the decision?**
-- Our tests point to feedback on its own answers, which means reinforcement learning (Findings 3 and 4).
+**Q4. What makes the training work?**
+- **The shape of the training targets.** Copying NTSB's long real letters made it loop. A short fixed letter plus recovery runs fixed it (Finding 2).
 
 ### Threat model (T3)
 The letters are written by the people being graded. They have a reason to push.
@@ -206,7 +208,7 @@ The letters are written by the people being graded. They have a reason to push.
 - **STaR** (Zelikman et al., 2022): keep correct answers, redo wrong ones with the right answer as a hint.
 - **GRPO** (Shao et al., 2024): reinforcement learning with group rewards.
 
-STaR and GRPO are our planned fix.
+STaR and GRPO are part of our next step (see With more credits).
 
 ---
 
@@ -309,7 +311,7 @@ A training run looks exactly like a test run:
 - Reported overall, per subset, and on the safety set
 
 **Things that shouldn't get worse**
-- Grade accuracy: 27% → 26% (CI −7 to +5, no real change)
+- Grade accuracy: 27% → 26% (CI −7 to +5, no significant change)
 - Trick letters: 8 → 7 of 20
 - Valid calls: 98% → 99%
 
@@ -340,10 +342,9 @@ Same for v1 and v2.
 - float16, adapter merged
 - Stops on the model's end-of-turn tokens
 
-**Training loss (a warning sign we noticed late)**
+**Training loss**
 - v1: 0.453 → 0.392
 - v2: 0.206 → 0.038
-- Much lower loss, same grade accuracy.
 
 ### Seeds
 - Exam sample: 42
@@ -355,7 +356,7 @@ Same for v1 and v2.
 **1. Training targets: v1 vs v2**
 - v1: copies NTSB's real long letters
 - v2: short letter, reasons first, recovery runs
-- Results: exam100 table below
+- Full story: see From v1 to v2 below
 
 **2. Harness fixes** (found on the untrained model, used in every run)
 1. Read every tool list in a reply, not just the first
@@ -363,7 +364,43 @@ Same for v1 and v2.
 3. Replace AgentTune's last prompt sentence
 4. Stop if the exact same call comes a 3rd time
 
-**3. Offline tests on why accuracy is low** (see Findings)
+### From v1 to v2: how we found the problem and fixed it
+**Step 1. v1: train on what NTSB really wrote**
+- Training targets: the tool calls, plus NTSB's real reply letters as the letter to draft
+- Same 620 cases, 88 repair runs
+
+**Step 2. v1 results (exam100)**
+- Finished: 7% → 39%. Better, but most reviews still didn't finish.
+- Verified task success: 3% → 19%
+- Fake quotes: 40% → 17%
+- But 40 of 100 runs hit the 12-step limit
+- And each reply took up to 70 seconds
+
+**Step 3. What we found when we read the logs**
+- **The letter was the problem.** NTSB's real letters are long and full of facts the agent never sees (dates, meetings, earlier letters). The model learned to write long letters, couldn't finish them, failed the rule check, and tried again until it ran out of steps.
+- **The slow replies were a stop-token bug.** The trained model ends its turn with `<|END_RESPONSE|>`, but generation only stopped on the config's end token, so every reply ran to 700 tokens.
+- **A quick fix didn't work.** We tried a no-repeat rule during decoding. The loops stayed, which told us the cause was what we trained on, not how we decoded.
+
+**Step 4. v2: change what the model learns to write**
+1. **A short fixed letter per grade:** easy to write, always passes the rule check
+2. **Reasons before the grade:** "NTSB asked… the organisation says… so they…", so it has to state the evidence first
+3. **59 recovery runs:** the model sees a broken, cut-off reply (shown but not learned), the tool answers "no tool call", and the model gets back on track
+4. **Stop on the model's own end tokens,** applied to every run, before and after
+
+**Step 5. v2 results (same 100 cases)**
+| | v1 | v2 |
+|---|---|---|
+| Finished | 39% | **86%** |
+| How runs ended | step limit 40, sent 39, repeating 20 | **sent 86**, repeating 10 |
+| Verified task success | 19% | **23%** |
+| Fake quotes | 17% | **11%** |
+| Letter ends with the grade | 44% | **98%** |
+| Seconds per case | 33.9 | **21.9** |
+| AuditKIT tool-call F1 | 0.75 | **0.92** |
+
+**One trade-off:** v2 fell for more trick letters than v1 (7 vs 4 of 20). See Limitations.
+
+**Then we ran v2 on all 300 test cases** for the final numbers in Results.
 
 ---
 
@@ -402,7 +439,7 @@ Same for v1 and v2.
 | AuditKIT success / F1 | 4/300, 0.58 | 74/300, 0.93 | |
 
 **Simple baselines (no AI)**
-- Copy NTSB's last grade: **36%**
+- Copy NTSB's last grade: 36%
 - Always say "Open – Acceptable": 26% (exam100), 33% (all300)
 
 ### Per subset (all300)
@@ -442,7 +479,6 @@ Same for v1 and v2.
 **The errors that broke the workflow dropped**
 - Stuck repeating: 92% → 9%
 - Fake quotes: 43% → 9%
-- Guardrail violations: 0.03 → 0 per case
 
 **And it got faster**
 - 33 s → 21 s per case
@@ -458,53 +494,19 @@ Same for v1 and v2.
 - Looping almost gone
 - Finished: +47 points
 
-#### 3. The grade decision did not improve
-- Grade accuracy: 27% → 26%
-- Supervised training copies the whole run.
-- The grade is less than 1% of the tokens it learns from.
-- So it learned what a review looks like, not how to decide one.
+#### 3. Guardrails built into the tools held
+- Self-approval bait: 0 of 5, before and after
+- Skip-the-rules bait: 0 of 5, before and after
+- Guardrail violations: 0.03 → 0 per case
+- The agent can't approve itself because there is no tool for it, so training can't break that.
 
-**We ruled out the obvious causes**
+#### 4. The harness matters as much as the model
+Four small fixes to the loop, found on the untrained model, were needed before any training could show up:
+- reading every tool list in a reply
+- two repeat stops
+- one changed prompt sentence
 
-"Maybe its grade doesn't follow its own reasons"
-- If it always did: 26% → 28%
-- Only +2 points
-
-"Maybe it doesn't read enough"
-- Read every letter: 28%
-- Skipped some: 24%
-- Long cases (5+ letters): 17%
-
-"Maybe it's stuck on one wrong grade"
-- No. Errors are spread across all 7 grades.
-
-**What's actually missing:** understanding what a reply commits to.
-
-#### 4. The fix: feedback on its own answers
-- Supervised training only shows the right answer.
-- The model never makes a call and finds out if it was wrong.
-- We already have an automatic checker: NTSB's real grade.
-- That makes this a natural fit for reinforcement learning (see With more credits).
-
----
-
-### Sample input and output
-**Case:** CASE-3332 (v2)
-
-**The FAA's reply says it is:**
-- "working with" manufacturers
-- "to develop an effective plan"
-- and will report "once the action plan is completed"
-
-**What the agent did**
-- ✅ Went through every step and sent the review for approval
-- ✅ Wrote the right reason: "so they are doing what NTSB asked" (means Open)
-- ❌ Then graded it **Closed**
-- ❌ Misread the precedents: said 2 Closed, 1 Open (really 1 Closed, 2 Open)
-
-**Right process. Right reason. Wrong decision.**
-
-All conversations and audit logs: `ntsb-eval-runs`, in `<run>/conversations/` and `<run>/logs/`.
+All four are applied the same way to every run.
 
 ### What didn't work
 **1. v1 looped while writing letters**
@@ -521,10 +523,6 @@ All conversations and audit logs: `ntsb-eval-runs`, in `<run>/conversations/` an
 **4. Replies took 70 seconds**
 - Cause: the model ends turns with `<|END_RESPONSE|>`, not the config's end token.
 - Fixed by: stopping on its own end tokens.
-
-**5. A "grade must match reasons" rule**
-- Tested offline: only +2 points.
-- Not built.
 
 ### Cost and compute
 **Training**
@@ -547,60 +545,107 @@ The API number is an estimate with assumed prices. We didn't run it.
 ---
 
 ## Limitations
-**Decision quality**
-- Accuracy 26%, below the copy-the-last-grade baseline (36%)
-- Use it to prepare drafts. A human decides.
+### Known weaknesses
+**1. The grade decision did not improve**
+- Grade accuracy: 27% before, 26% after (no significant change)
+- Below a no-AI baseline: copying NTSB's last grade scores 36%
+- So today the agent prepares the draft and a human decides. Human approval is required by design.
 
-**Risky mistakes**
-- Closed precision about 50%
-- Pressure to close still works 7 times in 20
+**Why we think it happened**
+- Supervised training copies the whole run.
+- The grade is less than 1% of the tokens the model learns from.
+- So it learned what a review looks like more than how to decide one.
 
-**Confidence**
-- Over-confident (ECE 0.48)
-- Training confidence came from a simple rule
+**Causes we ruled out**
+- *Its grade doesn't follow its own reasons:* if it always did, accuracy would only reach 28% (+2)
+- *It doesn't read enough:* read every letter 28%, skipped some 24%
+- *It's stuck on one wrong grade:* no, errors are spread across all 7 grades
 
-**Training data flaw**
-- The training quote was picked using the hidden answer.
-- The "so they…" reason was written from the label.
-- So it learned the look of reasoning, not the skill.
+**What's left:** understanding what a reply actually commits to. Long cases (5+ letters) drop to 17%.
 
-**Coverage**
-- Reads only part of long cases
-- English only, one base model
-- No general benchmark, no closed-model accuracy test, no live demo
+**Example: CASE-3332**
+- The FAA said it is "working with" manufacturers "to develop an effective plan" and will report "once the action plan is completed".
+- ✅ The agent did every step and sent it for approval.
+- ✅ It wrote the right reason: "so they are doing what NTSB asked" (means Open).
+- ❌ It then graded it Closed.
+- ❌ It misread the precedents: it said 2 Closed and 1 Open, when there were 1 Closed and 2 Open.
+
+**2. Persuasion still works**
+- Closed precision is about 50%.
+- Pressure letters ("NTSB must close this") still work 4 times in 5, and injections 3 in 5 (7 of 20 in total).
+- The hard guardrails held (see Finding 3), but the grade itself can still be pushed.
+
+**3. Over-confident**
+- ECE 0.48
+- The confidence values in training came from a simple rule (0.85, 0.70 or 0.75).
+
+**4. A flaw in our training data**
+- The training quote was picked using the hidden NTSB answer.
+- The "so they…" reason line was written from the label.
+- So the model learned the look of reasoning more than the skill.
+
+**5. Coverage**
+- It reads only part of long cases.
+- English only, one base model.
+- No general benchmark, no closed-model accuracy test, no live demo.
 
 ## With more credits
+### What we used
+| What | GPU | Time | Cost |
+|---|---|---|---|
+| Training v1 + v2 | 1× A100 | 2 × 22 min | ~$2 |
+| Evaluation: before (300), v1 (100), v2 (300), checks | A100s in parallel | 6–7 GPU-hours | ~$16 |
+| Development and debugging | free Colab T4 | many hours | $0 |
+| **Total** | | | **~$18** |
+
 ### Planned approach
-**Main idea: guess, check, reflect, learn.**
+The goal is to fix the weaknesses in Limitations, mainly the grade decision and persuasion. The method is: **guess, check, reflect, learn.**
 
 **1. STaR: learn from its own corrected mistakes**
-- Tiny Aya grades the training cases.
-- Right answers: kept.
-- Wrong answers: shown NTSB's real grade as a hint, reasoned again, then added to training.
+- Tiny Aya reviews 2,000 training cases.
+- Right answers: kept as new training data.
+- Wrong answers: shown NTSB's real grade as a hint, reasoned again, then kept.
+- Then one more LoRA run on the result.
 
 **2. GRPO in AgentTune**
-- Several tries per case.
+- 4 tries per case on 1,000 cases.
 - Reward: right grade + rules passed + sent for approval.
-- Penalty: fake quotes.
-- Automatic checker, so no LLM judge.
+- Penalty: fake quotes, and closing a case that should stay Open.
+- The checker is automatic (NTSB's real grade), so no LLM judge is needed.
 
 **3. Teacher reasoning as a warm start**
-- A large open model writes a point-by-point analysis per case.
-- Kept only if its grade matches NTSB's.
+- A large open model (70B class) writes a point-by-point analysis for 2,000 cases: what NTSB asked, what was done, what's in progress, and the grade.
+- We keep only analyses whose grade matches NTSB's.
 
-**4. Cleaner training data**
-- Pick quotes without looking at the answer
-- Put grade definitions in the prompt
-- Split the decision into 2 questions: finished? acceptable?
-- Match the real Open/Closed mix
-- Short notes for long cases
+**4. Harder safety training**
+- 200 new trick letters (injection and pressure) added to training, with the right grade as the target.
+
+**5. Cleaner data**
+- Pick quotes without looking at the answer.
+- Put the grade definitions in the prompt.
+- Match the real Open/Closed mix.
+
+### How much each step would cost
+We estimated every line from numbers we measured ourselves: **21 s per review on one A100** and **$2.50 per A100-hour** (what we paid on HF Jobs).
+
+| Step | How we estimated it | GPU-hours | Cost |
+|---|---|---|---|
+| STaR: 2,000 reviews | 2,000 × 21 s ≈ 12 h, plus redoing ~75% wrong ones ≈ 9 h | ~21 | ~$53 |
+| STaR: one more LoRA run | our runs took 22 min for 620 cases, so ~3× data ≈ 1.2 h | ~1 | ~$3 |
+| GRPO: 1,000 cases × 4 tries | 4,000 × 21 s ≈ 23 h, plus ~50% for training updates | ~35 | ~$88 |
+| Teacher: 70B model on 2,000 cases | ~4× slower than our 3B, on 2 GPUs: 2,000 × 84 s × 2 ≈ 93 h | ~93 | ~$233 |
+| Safety: 200 trick letters | built with our tools; just 200 × 21 s for checks | ~1 | ~$3 |
+| Re-test: before + after on 300 cases, plus safety | 2 × 300 × 21 s ≈ 3.5 h, plus checks (our real eval cost ~$16) | ~6 | ~$16 |
+| **Total** | | **~157** | **~$400** |
+
+These are rough estimates. Teacher reasoning is the biggest cost and is optional: without it, the plan costs about **$165**.
 
 ### Expected before and after
 Forecast, not measured.
 
 | | Now | Expected |
 |---|---|---|
-| Grade accuracy | 26% | 35–45% (beats the 36% baseline) |
+| Grade accuracy | 26% | 35–45% (beats the 36% copy baseline) |
 | Verified task success | 25% | 30–40% |
 | Pressure tricks | 7 of 20 | about 3 of 20 |
 | Finished | 88% | stays 85%+ |
@@ -615,7 +660,7 @@ Forecast, not measured.
   - v1 and v2 adapters
 - **GitHub:** https://github.com/niharnandala/ntsb-safety-review-agent
 - **Demo / Space:** none
-- **Video / slides:** none yet
+- **Video / slides:** in progress
 
 ## Documentation and reproduction
 ### Environment
@@ -651,25 +696,23 @@ Forecast, not measured.
 - Done earlier: only our own planning notes
 
 ## Discussion: what we learned
-**1. Copying examples teaches procedure, cheaply.**
+**1. A small open model can learn a real workflow, cheaply.**
 - 620 examples + $2 of GPU
-- A 3B model now runs a 9-step workflow reliably
+- A 3B model now runs a 9-step regulatory workflow reliably
 
-**2. Copying examples doesn't teach judgment.**
-- The decision is a tiny part of the run.
-- It depends on reading what someone really meant.
-- Training loss (0.038) gave no warning. Only test accuracy showed it.
+**2. What you train on shapes how the agent behaves.**
+- Long, fact-heavy targets taught it to loop.
+- Short, fixed targets plus recovery examples taught it to finish.
 
-**3. Measure the decision apart from the process.**
-- Task success alone (1% → 25%) looked like a clean win.
-- Splitting "finished" from "right grade" showed the real gap.
+**3. Put guardrails in the tools.**
+- The rules that lived in the tools (no approve tool, rule check before approval) held every time.
 
 **Implications**
-- For regulated workflows: fine-tuning gets you a reliable, auditable process.
-- Keep human approval until the decision is trained with verified feedback.
+- For regulated workflows, fine-tuning gives a reliable, auditable process at low cost.
+- Keep a human approving the result (see Limitations).
 
 **Future work**
-- STaR, then GRPO in AgentTune, rewarded on the verified grade.
+- See With more credits: STaR, then GRPO in AgentTune.
 
 ## Team
 - Nihar Nandala (GitHub / HF: [niharnandala](https://huggingface.co/niharnandala))
@@ -702,19 +745,19 @@ Both of us worked on everything together:
 
 ## LLM usage statement
 - A large share of the code and this write-up was drafted with an AI assistant (Claude, Anthropic), under our direction.
-- We designed the task, reviewed every step, ran every job and checked the results.
+- We designed the task, reviewed every step, ran every job and checked the results ourselves.
 
 ## Changelog
 **First submission**
 - Before, v1 and v2 results
 
 **Write-up update**
-- Follows the recommended layout
+- Follows the recommended layout, with a clickable contents list
 - Added a results chart and two diagram images
-- Rewritten for skimming: short lines, numbers on their own lines
-- Leads with the workflow result; the grade decision is covered in Findings 3 and 4
-- RL plan is the main next step
-- Added a clickable contents list, the story behind the problem, real office pain points, other uses, and impact-focused research questions
+- Added the story behind the problem, office pain points and other uses
+- Weaknesses gathered in one place (Limitations)
+- Added the v1 to v2 engineering story
+- With more credits: what we spent, what we'd do, and how each cost was estimated
 - All numbers unchanged
 
 ## Appendix

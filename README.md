@@ -648,7 +648,7 @@ Forecast, not measured.
   - v1 and v2 adapters
 - **GitHub:** https://github.com/niharnandala/ntsb-safety-review-agent
 - **Demo / Space:** none
-- **Video / slides:** in progress
+- **Slides:** [NTSB_Review_Agent_slides.pdf](NTSB_Review_Agent_slides.pdf)
 
 ## Documentation and reproduction
 ### Environment

@@ -46,19 +46,7 @@ NTSB has issued more than 15,000 safety recommendations. Every recipient writes 
 ### What the agent does
 One episode is one reply to grade. Here's the route a good review takes:
 
-```mermaid
-flowchart LR
-    A[get_recommendation] --> B[read_letter<br/>the reply]
-    B --> C[read_letter<br/>NTSB's latest]
-    C --> D[find_precedents]
-    D --> E[get_peers]
-    E --> F[verify_quote]
-    F --> G[submit_review<br/>reasons, grade,<br/>quote, letter]
-    G --> H{check_rules}
-    H -- FAIL --> G
-    H -- READY --> I[request_approval]
-    I --> J([Human analyst])
-```
+![The agent's workflow: read the case, compare, decide and check, then a human decides](workflow.png)
 
 The agent has 10 tools, all in the `ntsb_agent` package:
 
@@ -111,17 +99,7 @@ We converted every saved conversation to OpenAI-style messages and scored it wit
 - tool-call F1 by tool name against the reference route
 
 ### How the repos connect
-```mermaid
-flowchart LR
-    D[(Public NTSB data)] --> E[02: build 21,209 cases]
-    E --> T[ntsb_agent + 03: tools and rules]
-    T --> L[Agent loop<br/>AgentTune prompt + parser]
-    L --> X[05 / 05 v2: training examples]
-    X --> S[06: LoRA SFT<br/>AgentTune settings + TRL<br/>HF A100]
-    S --> R[08: same loop on 300 test cases]
-    L --> R
-    R --> A[09: our metrics +<br/>AuditKIT agent_eval]
-```
+![How the pieces connect, from public NTSB data to scoring with AuditKIT](pipeline.png)
 
 ---
 
@@ -399,7 +377,7 @@ A large share of the code and this write-up was drafted with an AI assistant (Cl
 
 ## Changelog
 - **First submission:** before, v1 and v2 results.
-- **Write-up update:** reorganized to follow the recommended layout, added the before/after chart and two diagrams, rewrote the findings around the main result (it learned the steps but not the judgment) and made the RL plan the main next step. All numbers are unchanged.
+- **Write-up update:** reorganized to follow the recommended layout, added the before/after chart and two diagram images, rewrote the findings around the main result (it learned the steps but not the judgment) and made the RL plan the main next step. All numbers are unchanged.
 
 ## Appendix
 ### Prompt

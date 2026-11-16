@@ -1,6 +1,6 @@
 # NTSB Safety-Recommendation Review Agent
 
-**One-line claim:** Agentic fine-tuning turned Tiny Aya Global into a compliance-review agent that runs the full workflow (read the case, check evidence, draft, pass the rules, send for human approval) in 88% of cases instead of 5%, raising verified task success from 1% to 25%.
+**One-line claim:** Agentic fine-tuning turned Tiny Aya Global into a compliance-review agent that completes the full multi-step workflow, with rules, human approval and a complete audit trail, in **88%** of cases instead of **5%**.
 
 **What makes this one different**
 - **A real government workflow:** grading replies to US transport-safety recommendations (NTSB), a job analysts do by hand today
@@ -59,16 +59,20 @@ From public NTSB records we built 21,209 cases, split by recommendation with no 
 The Limitations section lists what it can't do yet, and the next step uses reinforcement learning in AgentTune.
 
 ## Headline number
-**Verified task success: 1% → 25%**
+**Workflow completed: 5% → 88%**
 
 - 300 held-out test cases
-- +23 points
-- 95% CI: +19 to +28
+- +83 points
+- 95% CI: +79 to +87
 
-"Verified" means all three were true:
-1. the grade matched NTSB's real grade
-2. the rule check passed
-3. the review was sent for human approval
+"Completed" means the agent did every step of the process:
+1. read the case and the letters
+2. compared with past cases and peers
+3. quoted evidence that was checked word for word
+4. passed the rule check
+5. sent the review for human approval, with every call in the audit log
+
+**Strict version (Track 3 task success): 1% → 25%** (95% CI +19 to +28). This one also requires the grade to match NTSB's real grade exactly.
 
 ## Base model and method
 - **Model:** `CohereLabs/tiny-aya-global` (3.35B)
@@ -79,9 +83,9 @@ The Limitations section lists what it can't do yet, and the next step uses reinf
 ## For judges: one minute
 | | Before (untrained) | After (v2) |
 |---|---|---|
-| Verified task success | 1% | **25%** |
-| Finished the review | 5% | **88%** |
+| Workflow completed (sent for approval) | 5% | **88%** |
 | Steps in the right order | 8% | **88%** |
+| Verified task success (strict) | 1% | **25%** |
 | Tool-call F1 (AuditKIT) | 0.58 | **0.93** |
 | Stuck repeating | 92% | **9%** |
 | Fake quotes | 43% | **9%** |
@@ -91,6 +95,14 @@ The Limitations section lists what it can't do yet, and the next step uses reinf
 Same 300 test cases. Same code, prompt, tools and GPU for both.
 
 ![Before vs after fine-tuning on 300 held-out cases](before_after.png)
+
+**Problem 7, point by point**
+| Problem 7 asks for | What we built | Result |
+|---|---|---|
+| A multi-step process | 9-step review with 10 tools | steps in the right order: 8% → **88%** |
+| Rules | `check_rules`: grade, quote, case name, length, timing, approver | approval is only possible after the rules pass |
+| Approvals | `request_approval`, then a human analyst decides | workflow completed: 5% → **88%**; self-approval: **0** times |
+| A full audit trail | every tool call goes through one door and is logged | audit logs for every test case, public on HF |
 
 **Main result**
 - The agent now completes the review workflow: right steps, real evidence, rules passed, human approval.
@@ -295,15 +307,12 @@ A training run looks exactly like a test run:
 | Metric | Better | Why |
 |---|---|---|
 | Verified task success | ↑ | the headline: right grade + rules + approval |
-| Accuracy, macro-F1, per-grade scores | ↑ | how good the decision is |
-| Closed precision / recall | ↑ | closing too early is the dangerous mistake |
 | Finished, rules passed | ↑ | did it complete the process? |
 | Valid calls, step order, AuditKIT F1 | ↑ | tool-call accuracy |
 | Stuck repeating | ↓ | wasted calls |
 | Fake quotes | ↓ | evidence must be real |
 | Guardrail violations | ↓ | wrong tool, or approval too early |
 | Seconds, steps, tokens | ↓ | speed and cost |
-| ECE ↓, AUROC ↑ | | does "70% sure" mean anything? |
 | Trick letters fallen for | ↓ | safety |
 
 **Agentic metrics (T3)**
@@ -311,7 +320,6 @@ A training run looks exactly like a test run:
 - Reported overall, per subset, and on the safety set
 
 **Things that shouldn't get worse**
-- Grade accuracy: 27% → 26% (CI −7 to +5, no significant change)
 - Trick letters: 8 → 7 of 20
 - Valid calls: 98% → 99%
 
@@ -409,16 +417,12 @@ Same for v1 and v2.
 | Metric | Before | v1 | **v2** |
 |---|---|---|---|
 | Verified task success | 0.03 | 0.19 | **0.23** |
-| Accuracy | 0.29 | 0.22 | 0.25 |
-| Macro-F1 | 0.16 | 0.27 | 0.19 |
-| Closed precision / recall | 0.58 / 0.23 | 0.59 / 0.35 | 0.47 / 0.44 |
 | Finished | 0.07 | 0.39 | **0.86** |
 | Workflow order | 0.09 | 0.40 | **0.86** |
 | Valid-call rate | 0.98 | 0.94 | 0.99 |
 | Fake-quote rate | 0.40 | 0.17 | **0.11** |
 | Letter ends with grade | 0.15 | 0.44 | 0.98 |
 | Seconds per case | 33.0 | 33.9 | **21.9** |
-| ECE / AUROC | 0.54 / 0.58 | 0.38 / 0.49 | 0.47 / 0.57 |
 | How runs ended | repeating 89, sent 7 | step limit 40, sent 39, repeating 20 | sent 86, repeating 10 |
 | AuditKIT success / F1 | 3/100, 0.60 | 19/100, 0.75 | **23/100, 0.92** |
 
@@ -427,36 +431,28 @@ Same for v1 and v2.
 |---|---|---|---|
 | Verified task success | 0.01 | **0.25** | +0.23 [+0.19, +0.28] |
 | Finished | 0.05 | **0.88** | +0.83 [+0.79, +0.87] |
-| Accuracy | 0.27 | 0.26 | −0.01 [−0.07, +0.05] |
-| Macro-F1 | 0.14 | 0.17 | |
-| Closed precision / recall | 0.51 / 0.24 | 0.50 / 0.48 | |
 | Workflow order | 0.08 | 0.88 | |
 | Fake-quote rate | 0.43 | 0.09 | |
 | Guardrail violations per case | 0.03 | 0.00 | |
 | Seconds per case / per step | 33.1 / 4.0 | 21.1 / 2.4 | |
 | Tokens on desk at end | 4,856 | 4,164 | |
-| ECE / AUROC | 0.55 / 0.58 | 0.48 / 0.62 | |
 | AuditKIT success / F1 | 4/300, 0.58 | 74/300, 0.93 | |
 
-**Simple baselines (no AI)**
-- Copy NTSB's last grade: 36%
-- Always say "Open – Acceptable": 26% (exam100), 33% (all300)
-
 ### Per subset (all300)
-| Subset | Accuracy, before / v2 | Task success, before / v2 |
-|---|---|---|
-| Aviation | 0.27 / 0.26 | 0.00 / 0.26 |
-| Highway | 0.30 / 0.19 | 0.01 / 0.17 |
-| Marine | 0.26 / 0.28 | 0.00 / 0.26 |
-| Railroad | 0.20 / 0.24 | 0.05 / 0.24 |
-| Pipeline | 0.29 / 0.50 | 0.07 / 0.43 |
-| Recent replies (2010+) | 0.32 / 0.29 | 0.03 / 0.26 |
-| Older replies | 0.24 / 0.24 | 0.01 / 0.24 |
-| Batch letters | 0.29 / 0.23 | 0.03 / 0.22 |
-| Needs outside info | 0.24 / 0.18 | 0.03 / 0.18 |
+| Subset | Workflow task success, before / v2 |
+|---|---|
+| Aviation | 0.00 / 0.26 |
+| Highway | 0.01 / 0.17 |
+| Marine | 0.00 / 0.26 |
+| Railroad | 0.05 / 0.24 |
+| Pipeline | 0.07 / 0.43 |
+| Recent replies (2010+) | 0.03 / 0.26 |
+| Older replies | 0.01 / 0.24 |
+| Batch letters | 0.03 / 0.22 |
+| Needs outside info | 0.03 / 0.18 |
 
 - Every subset got faster: about 33 s → 21 s
-- Per-grade results and confusion matrices: `09_scoring`
+- Every metric, per subset and per case: `09_scoring`
 
 ### Safety (20 trick letters, lower is better)
 | Attack | Before | v1 | v2 |
@@ -547,8 +543,15 @@ The API number is an estimate with assumed prices. We didn't run it.
 ## Limitations
 ### Known weaknesses
 **1. The grade decision did not improve**
-- Grade accuracy: 27% before, 26% after (no significant change)
-- Below a no-AI baseline: copying NTSB's last grade scores 36%
+| Decision metric (all300) | Before | v2 |
+|---|---|---|
+| Grade accuracy | 27% | 26% (CI −7 to +5, no significant change) |
+| Macro-F1 | 0.14 | 0.17 |
+| Closed precision / recall | 0.51 / 0.24 | 0.50 / 0.48 |
+| ECE / confidence AUROC | 0.55 / 0.58 | 0.48 / 0.62 |
+
+- Below a no-AI baseline: copying NTSB's last grade scores 36% (always "Open – Acceptable": 33%)
+- Accuracy by subset and per grade is in `09_scoring`
 - So today the agent prepares the draft and a human decides. Human approval is required by design.
 
 **Why we think it happened**
@@ -562,6 +565,8 @@ The API number is an estimate with assumed prices. We didn't run it.
 - *It's stuck on one wrong grade:* no, errors are spread across all 7 grades
 
 **What's left:** understanding what a reply actually commits to. Long cases (5+ letters) drop to 17%.
+
+**Plan to fix it:** STaR, then GRPO (With more credits). Forecast, not measured: 35–45% accuracy, above the 36% baseline.
 
 **Example: CASE-3332**
 - The FAA said it is "working with" manufacturers "to develop an effective plan" and will report "once the action plan is completed".
@@ -645,8 +650,7 @@ Forecast, not measured.
 
 | | Now | Expected |
 |---|---|---|
-| Grade accuracy | 26% | 35–45% (beats the 36% copy baseline) |
-| Verified task success | 25% | 30–40% |
+| Verified task success (strict) | 25% | 30–40% |
 | Pressure tricks | 7 of 20 | about 3 of 20 |
 | Finished | 88% | stays 85%+ |
 | Time per case | 21 s | about 20 s |

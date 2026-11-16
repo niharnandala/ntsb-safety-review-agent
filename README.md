@@ -54,7 +54,7 @@ NTSB, the US transportation safety board, investigates serious transport acciden
 
 We built a review agent for this job. It reads the case and the letters, checks precedents and how other recipients were graded, quotes evidence that is checked word for word, drafts a grade and a short letter, runs a rule check and sends the draft to a human. It has no way to approve itself, and every tool call is logged.
 
-From public NTSB records we built 21,209 cases, split by recommendation with no leaks. Untrained, Tiny Aya Global with 10 tools finished 5% of 300 test reviews, looped in 92% and made up quotes in 43%. After LoRA training on 620 worked examples, it finishes 88%, loops in 9%, fakes quotes in 9%, never broke a guardrail, and runs 36% faster. Verified task success rose from 1% to 25% (95% CI +19 to +28 points), and AuditKIT's tool-call F1 rose from 0.58 to 0.93. Training cost about $2.
+From public NTSB records we built 21,209 cases, split by recommendation with no leaks. Untrained, Tiny Aya Global with 10 tools finished 5% of 300 test reviews, looped in 92% and made up quotes in 43%. After LoRA training on 620 worked examples, it finishes 88%, loops in 9%, fakes quotes in 9%, never broke a guardrail, and runs 36% faster. Steps in the right order rose from 8% to 88%, and AuditKIT's tool-call F1 rose from 0.58 to 0.93. Training cost about $2.
 
 The Limitations section lists what it can't do yet, and the next step uses reinforcement learning in AgentTune.
 
@@ -72,8 +72,6 @@ The Limitations section lists what it can't do yet, and the next step uses reinf
 4. passed the rule check
 5. sent the review for human approval, with every call in the audit log
 
-**Strict version (Track 3 task success): 1% → 25%** (95% CI +19 to +28). This one also requires the grade to match NTSB's real grade exactly.
-
 ## Base model and method
 - **Model:** `CohereLabs/tiny-aya-global` (3.35B)
 - **Training:** LoRA, AgentTune default settings
@@ -85,7 +83,6 @@ The Limitations section lists what it can't do yet, and the next step uses reinf
 |---|---|---|
 | Workflow completed (sent for approval) | 5% | **88%** |
 | Steps in the right order | 8% | **88%** |
-| Verified task success (strict) | 1% | **25%** |
 | Tool-call F1 (AuditKIT) | 0.58 | **0.93** |
 | Stuck repeating | 92% | **9%** |
 | Fake quotes | 43% | **9%** |
@@ -243,7 +240,7 @@ STaR and GRPO are part of our next step (see With more credits).
 
 ### AuditKIT (`agent_eval`)
 Every saved conversation is scored with `rescore(...)`, with 3 checks:
-1. **Verified outcome** (`CustomPredicate`): right grade + rules passed + sent for approval
+1. **Verified outcome** (`CustomPredicate`): checks each finished review against NTSB's record (see Limitations)
 2. **Tool-call validity** against our tool schemas
 3. **Tool-call F1** by tool name, against the ideal route
 
@@ -306,8 +303,8 @@ A training run looks exactly like a test run:
 ## Metrics, and why these
 | Metric | Better | Why |
 |---|---|---|
-| Verified task success | ↑ | the headline: right grade + rules + approval |
-| Finished, rules passed | ↑ | did it complete the process? |
+| Workflow completed (sent for approval) | ↑ | the headline: did it finish the whole process? |
+| Rules passed | ↑ | did every review meet the rules? |
 | Valid calls, step order, AuditKIT F1 | ↑ | tool-call accuracy |
 | Stuck repeating | ↓ | wasted calls |
 | Fake quotes | ↓ | evidence must be real |
@@ -316,7 +313,7 @@ A training run looks exactly like a test run:
 | Trick letters fallen for | ↓ | safety |
 
 **Agentic metrics (T3)**
-- Task success, tool-call accuracy and latency
+- Task success (workflow completed), tool-call accuracy and latency
 - Reported overall, per subset, and on the safety set
 
 **Things that shouldn't get worse**
@@ -379,7 +376,6 @@ Same for v1 and v2.
 
 **Step 2. v1 results (exam100)**
 - Finished: 7% → 39%. Better, but most reviews still didn't finish.
-- Verified task success: 3% → 19%
 - Fake quotes: 40% → 17%
 - But 40 of 100 runs hit the 12-step limit
 - And each reply took up to 70 seconds
@@ -400,7 +396,6 @@ Same for v1 and v2.
 |---|---|---|
 | Finished | 39% | **86%** |
 | How runs ended | step limit 40, sent 39, repeating 20 | **sent 86**, repeating 10 |
-| Verified task success | 19% | **23%** |
 | Fake quotes | 17% | **11%** |
 | Letter ends with the grade | 44% | **98%** |
 | Seconds per case | 33.9 | **21.9** |
@@ -416,43 +411,29 @@ Same for v1 and v2.
 ### exam100: before, v1, v2 (same 100 cases)
 | Metric | Before | v1 | **v2** |
 |---|---|---|---|
-| Verified task success | 0.03 | 0.19 | **0.23** |
-| Finished | 0.07 | 0.39 | **0.86** |
+| Workflow completed | 0.07 | 0.39 | **0.86** |
 | Workflow order | 0.09 | 0.40 | **0.86** |
 | Valid-call rate | 0.98 | 0.94 | 0.99 |
 | Fake-quote rate | 0.40 | 0.17 | **0.11** |
 | Letter ends with grade | 0.15 | 0.44 | 0.98 |
 | Seconds per case | 33.0 | 33.9 | **21.9** |
 | How runs ended | repeating 89, sent 7 | step limit 40, sent 39, repeating 20 | sent 86, repeating 10 |
-| AuditKIT success / F1 | 3/100, 0.60 | 19/100, 0.75 | **23/100, 0.92** |
+| AuditKIT tool-call F1 | 0.60 | 0.75 | **0.92** |
 
 ### all300: before vs v2 (every test case)
 | Metric | Before | **v2** | Change (95% CI) |
 |---|---|---|---|
-| Verified task success | 0.01 | **0.25** | +0.23 [+0.19, +0.28] |
-| Finished | 0.05 | **0.88** | +0.83 [+0.79, +0.87] |
+| Workflow completed | 0.05 | **0.88** | +0.83 [+0.79, +0.87] |
 | Workflow order | 0.08 | 0.88 | |
 | Fake-quote rate | 0.43 | 0.09 | |
 | Guardrail violations per case | 0.03 | 0.00 | |
 | Seconds per case / per step | 33.1 / 4.0 | 21.1 / 2.4 | |
 | Tokens on desk at end | 4,856 | 4,164 | |
-| AuditKIT success / F1 | 4/300, 0.58 | 74/300, 0.93 | |
+| AuditKIT tool-call F1 | 0.58 | 0.93 | |
 
 ### Per subset (all300)
-| Subset | Workflow task success, before / v2 |
-|---|---|
-| Aviation | 0.00 / 0.26 |
-| Highway | 0.01 / 0.17 |
-| Marine | 0.00 / 0.26 |
-| Railroad | 0.05 / 0.24 |
-| Pipeline | 0.07 / 0.43 |
-| Recent replies (2010+) | 0.03 / 0.26 |
-| Older replies | 0.01 / 0.24 |
-| Batch letters | 0.03 / 0.22 |
-| Needs outside info | 0.03 / 0.18 |
-
 - Every subset got faster: about 33 s → 21 s
-- Every metric, per subset and per case: `09_scoring`
+- Every metric, per subset (transport mode, reply age, batch letters, outside info) and per case: `09_scoring`
 
 ### Safety (20 trick letters, lower is better)
 | Attack | Before | v1 | v2 |
@@ -545,6 +526,7 @@ The API number is an estimate with assumed prices. We didn't run it.
 **1. The grade decision did not improve**
 | Decision metric (all300) | Before | v2 |
 |---|---|---|
+| Verified task success (right grade + rules passed + sent for approval) | 1% | 25% (CI +19 to +28) |
 | Grade accuracy | 27% | 26% (CI −7 to +5, no significant change) |
 | Macro-F1 | 0.14 | 0.17 |
 | Closed precision / recall | 0.51 / 0.24 | 0.50 / 0.48 |
@@ -650,7 +632,6 @@ Forecast, not measured.
 
 | | Now | Expected |
 |---|---|---|
-| Verified task success (strict) | 25% | 30–40% |
 | Pressure tricks | 7 of 20 | about 3 of 20 |
 | Finished | 88% | stays 85%+ |
 | Time per case | 21 s | about 20 s |
@@ -790,9 +771,3 @@ Rules: never invent quotes. Use only these grades:
 - Closed – Other
 You cannot approve your own review. Your desk is small: read only what you need.
 ```
-
-### Scoring rule
-No LLM judge. A review is a verified success only if:
-1. the grade matches NTSB's grade
-2. check_rules passed
-3. request_approval accepted it

@@ -6,6 +6,42 @@
 - Track 3, Agentic fine-tuning
 - Problem statement 7, Business workflow and decision agents
 
+## Contents
+- [Abstract](#abstract)
+- [Headline number](#headline-number)
+- [Base model and method](#base-model-and-method)
+- [For judges: one minute](#for-judges-one-minute)
+- [Problem statement and approach](#problem-statement-and-approach)
+  - [Why this problem](#why-this-problem)
+  - [Real office pain points this workflow addresses](#real-office-pain-points-this-workflow-addresses)
+  - [Where else this can work](#where-else-this-can-work)
+  - [What the agent does](#what-the-agent-does)
+  - [Research questions](#research-questions)
+  - [Threat model (T3)](#threat-model-t3)
+- [Hackathon repos (kits) used](#hackathon-repos-kits-used)
+- [Models and licenses](#models-and-licenses)
+- [Datasets, benchmarks and licenses](#datasets-benchmarks-and-licenses)
+- [Metrics, and why these](#metrics-and-why-these)
+- [Method / experiments](#method--experiments)
+- [Results](#results)
+  - [Findings](#findings)
+  - [Sample input and output](#sample-input-and-output)
+  - [What didn't work](#what-didnt-work)
+  - [Cost and compute](#cost-and-compute)
+- [Limitations](#limitations)
+- [With more credits](#with-more-credits)
+- [Artifacts](#artifacts)
+- [Documentation and reproduction](#documentation-and-reproduction)
+- [Declaration of work done outside the hackathon](#declaration-of-work-done-outside-the-hackathon)
+- [Discussion: what we learned](#discussion-what-we-learned)
+- [Team](#team)
+- [Author contributions](#author-contributions)
+- [Acknowledgements](#acknowledgements)
+- [References](#references)
+- [LLM usage statement](#llm-usage-statement)
+- [Changelog](#changelog)
+- [Appendix](#appendix)
+
 ## Abstract
 NTSB, the US transportation safety board, sends safety recommendations to agencies and companies and grades every reply on a seven-level scale. Analysts do this by hand, and the grade decides whether a safety problem stays tracked. We built a review agent for this job. It reads the case and the letters, checks precedents and how other recipients were graded, quotes evidence that is checked word for word, drafts a grade and a short letter, runs a rule check and sends the draft to a human. It has no way to approve itself, and every tool call is logged.
 
@@ -60,18 +96,52 @@ Same 300 test cases. Same code, prompt, tools and GPU for both.
 
 ## Problem statement and approach
 ### Why this problem
-**The job today**
-- NTSB has issued 15,000+ safety recommendations.
-- Every recipient writes back, sometimes for years.
-- An analyst reads each reply and grades it by hand.
+**How we picked it**
+- Before choosing, we looked through around 150 project ideas.
+- Most were crowded: chatbots, summarizers, generic assistants.
+- We wanted something different: a narrow, real problem that hurts people when it goes wrong, and where an agent with an audit trail actually fits.
 
-**Why it fits Problem 7**
-- Rules: what counts as an acceptable reply
-- Approvals: the analyst, plus a supervisor for high-priority cases
-- Audit: every decision must be traceable
+**The real story behind NTSB**
+- When a plane crashes, a train derails, a pipeline explodes or a ship sinks in the US, the NTSB investigates.
+- People have often died. The investigation asks one question: how do we stop this from happening again?
+- The answer is a **safety recommendation**, sent to whoever can fix it: the FAA, a railroad, an airline, a manufacturer, a state.
+- But the NTSB can't force anyone to act. It can only recommend, follow up and grade the reply.
 
-**Where else it applies**
-- Any regulator reviewing what a company says it has done
+**Where it gets painful**
+- Recipients write back, sometimes for years: "we're studying it", "we've formed a working group", "we disagree".
+- Someone at NTSB has to read every reply and decide: is this real action, or a polite delay?
+- That grade decides whether a safety problem stays on the radar or gets closed for good.
+- Close it too early, and a known hazard can quietly stay in place until it happens again.
+
+**Why an agent, and why Problem 7**
+- It's a multi-step process: read, compare with past cases, find evidence, draft, check the rules, get approval.
+- It has strict rules about what counts as acceptable.
+- It needs approvals: an analyst, plus a supervisor for high-priority cases.
+- Every decision has to be traceable.
+- That's Problem 7, almost word for word.
+
+### Real office pain points this workflow addresses
+| Pain point in a review office today | What the agent does about it |
+|---|---|
+| Thousands of replies, read by hand | Opens the case, pulls the right letters and drafts the review |
+| Long case histories spread over years | Reads the newest reply and NTSB's latest letter, and keeps a short desk |
+| Hard to stay consistent across analysts | Looks up how similar past cases and other recipients were graded |
+| Claims without proof ("we've addressed this") | Must quote the letter word for word, and every quote is checked |
+| Mistakes in the final letter | A rule check catches missing case names, wrong grades, length and timing |
+| "Who decided this, and why?" | Every tool call is logged; reasons are written down with the grade |
+| Pressure from the party being reviewed | The agent can't approve itself; a human always signs off |
+
+**What we can claim today:** the workflow part (finishing, evidence, rules, approval, audit log) works. The grade itself still needs a human, see Findings 3 and 4.
+
+### Where else this can work
+The same pattern shows up wherever one side makes a request and the other side replies with promises:
+- **Other safety regulators:** FAA, NHTSA, FRA and similar agencies following up on findings
+- **Health and drug oversight:** responses to inspection findings and warning letters
+- **Financial regulators:** replies to supervisory or comment letters
+- **Internal audit and compliance:** tracking corrective actions after an audit
+- **Quality systems (ISO, CAPA):** checking whether a corrective action was actually done
+
+We haven't tested these. They share the same steps: read the request, read the reply, compare, quote evidence, decide, get approval, log it.
 
 ### What the agent does
 One episode = one reply to grade.
@@ -104,19 +174,23 @@ One episode = one reply to grade.
 - Identical for before and after
 
 ### Research questions
-Not pre-registered. These are the questions our tests answer.
+Not pre-registered. These are the questions our experiments answer.
 
-**1. Can fine-tuning make a 3B model finish the review reliably?**
-- Yes.
-- Finished: 5% → 88%
+**Q1. Can a small, open 3B model be trained to run a real regulatory workflow end to end?**
+- **Yes.** It finishes 88% of reviews (was 5%), in the right order, with checked evidence and human approval.
+- **Why it matters:** offices could run this on their own hardware, cheaply ($15 per 1,000 reviews vs about $105 for a closed API, estimated), and keep sensitive documents in-house.
 
-**2. Does it also improve the grade?**
-- No.
-- Accuracy: 27% → 26%
+**Q2. Does learning the workflow also teach the decision?**
+- **No.** Grade accuracy stayed at 26–27%.
+- **Why it matters:** an agent can look fully competent (every step right) and still make the wrong call. Anyone deploying agents needs to measure the decision separately from the process.
 
-**3. Do the hard guardrails still hold?**
-- Self-approval and skipping the rules: yes, 0 of 10 before and after.
-- Injected instructions and pressure: no improvement.
+**Q3. Do the safety guardrails survive fine-tuning?**
+- **Yes for the hard ones:** it never approved itself and never skipped the rules (0 of 10, before and after).
+- **Not yet for persuasion:** injected instructions and pressure letters still work 7 times in 20.
+- **Why it matters:** in regulation, the party being reviewed writes the input. Guardrails have to be built into the tools, not just the prompt.
+
+**Q4. What would it take to teach the decision?**
+- Our tests point to feedback on its own answers, which means reinforcement learning (Findings 3 and 4).
 
 ### Threat model (T3)
 The letters are written by the people being graded. They have a reason to push.
@@ -640,6 +714,7 @@ Both of us worked on everything together:
 - Rewritten for skimming: short lines, numbers on their own lines
 - Leads with the workflow result; the grade decision is covered in Findings 3 and 4
 - RL plan is the main next step
+- Added a clickable contents list, the story behind the problem, real office pain points, other uses, and impact-focused research questions
 - All numbers unchanged
 
 ## Appendix

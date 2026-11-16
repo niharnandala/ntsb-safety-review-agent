@@ -1,12 +1,12 @@
 # NTSB Safety-Recommendation Review Agent
 
-**One-line claim:** Agentic fine-tuning turned Tiny Aya Global into a compliance-review agent that completes the full multi-step workflow, with rules, human approval and a complete audit trail, in **88%** of cases instead of **5%**.
+**One-line claim:** We trained a small open AI model (Tiny Aya Global) to do a real government review job. Before our training it finished the job in **5 out of 100** cases. After our training it finishes **88 out of 100**, tested on 300 cases it had never seen.
 
 **What makes this one different**
 - **A real government workflow:** grading replies to US transport-safety recommendations (NTSB), a job analysts do by hand today
-- **Real public data:** 21,209 cases built from NTSB's own records, with no synthetic data and 0 leaks
+- **Real public data:** 21,209 cases built from NTSB's own records. Nothing made up, and no test case was seen in training
 - **Safety built into the tools:** there is no approve tool, every call is logged, and a human signs off
-- **Measured honestly:** the same 300 held-out cases before and after, with confidence intervals and AuditKIT
+- **Measured fairly:** the same 300 test cases before and after training, checked with statistics and with AuditKIT
 
 ## Tracks and problem statements covered
 - Track 3, Agentic fine-tuning
@@ -54,57 +54,57 @@ NTSB, the US transportation safety board, investigates serious transport acciden
 
 We built a review agent for this job. It reads the case and the letters, checks precedents and how other recipients were graded, quotes evidence that is checked word for word, drafts a grade and a short letter, runs a rule check and sends the draft to a human. It has no way to approve itself, and every tool call is logged.
 
-From public NTSB records we built 21,209 cases, split by recommendation with no leaks. Untrained, Tiny Aya Global with 10 tools finished 5% of 300 test reviews, looped in 92% and made up quotes in 43%. After LoRA training on 620 worked examples, it finishes 88%, loops in 9%, fakes quotes in 9%, never broke a guardrail, and runs 36% faster. Steps in the right order rose from 8% to 88%, and AuditKIT's tool-call F1 rose from 0.58 to 0.93. Training cost about $2.
+From public NTSB records we built 21,209 cases, and kept 300 aside for testing that the model never saw in training. Before training, Tiny Aya Global with our 10 tools finished only 5% of the 300 test reviews. It got stuck repeating itself in 92% of them and made up quotes in 43%. We then trained it (LoRA, with AgentTune) on 620 worked examples. After training it finishes 88% of reviews, gets stuck in only 9%, makes up quotes in only 9%, never broke a safety rule, and is 36% faster. Training cost about $2.
 
 The Limitations section lists what it can't do yet, and the next step uses reinforcement learning in AgentTune.
 
 ## Headline number
-**Workflow completed: 5% → 88%**
+**Reviews completed: 5% before training, 88% after**
 
-- 300 held-out test cases
-- +83 points
-- 95% CI: +79 to +87
+- Tested on 300 cases the model never saw in training
+- That's a jump of 83 points
+- Statistically solid: the 95% confidence range is +79 to +87 points
 
-"Completed" means the agent did every step of the process:
+**"Completed" means the agent did the whole job:**
 1. read the case and the letters
-2. compared with past cases and peers
-3. quoted evidence that was checked word for word
+2. compared it with similar past cases
+3. quoted evidence, and the quote was checked word for word
 4. passed the rule check
-5. sent the review for human approval, with every call in the audit log
+5. sent the review to a human for approval, with every step logged
 
 ## Base model and method
 - **Model:** `CohereLabs/tiny-aya-global` (3.35B)
-- **Training:** LoRA, AgentTune default settings
-- **Data:** 620 tool-use runs, built with our real tools
-- **Evaluation:** our harness + AuditKIT `agent_eval`
+- **Training:** LoRA (light fine-tuning) with AgentTune's default settings
+- **Training data:** 620 example reviews, made by running our real tools
+- **Testing:** our own test setup + AuditKIT `agent_eval`
 
 ## For judges: one minute
 | | Before (untrained) | After (v2) |
 |---|---|---|
-| Workflow completed (sent for approval) | 5% | **88%** |
+| Reviews completed (sent for approval) | 5% | **88%** |
 | Steps in the right order | 8% | **88%** |
-| Tool-call F1 (AuditKIT) | 0.58 | **0.93** |
-| Stuck repeating | 92% | **9%** |
-| Fake quotes | 43% | **9%** |
-| Guardrail violations per case | 0.03 | **0** |
+| Right tools called (AuditKIT score, 0 to 1) | 0.58 | **0.93** |
+| Got stuck repeating itself | 92% | **9%** |
+| Made-up quotes | 43% | **9%** |
+| Safety-rule breaks per case | 0.03 | **0** |
 | Time per case | 33 s | **21 s** |
 
-Same 300 test cases. Same code, prompt, tools and GPU for both.
+Both columns: the same 300 test cases, same code, same tools, same GPU. Only the training is different.
 
 ![Before vs after fine-tuning on 300 held-out cases](before_after.png)
 
 **Problem 7, point by point**
 | Problem 7 asks for | What we built | Result |
 |---|---|---|
-| A multi-step process | 9-step review with 10 tools | steps in the right order: 8% → **88%** |
-| Rules | `check_rules`: grade, quote, case name, length, timing, approver | approval is only possible after the rules pass |
-| Approvals | `request_approval`, then a human analyst decides | workflow completed: 5% → **88%**; self-approval: **0** times |
-| A full audit trail | every tool call goes through one door and is logged | audit logs for every test case, public on HF |
+| A multi-step process | a 9-step review using 10 tools | did the steps in the right order: 8% → **88%** |
+| Rules | a rule checker (`check_rules`) that every review must pass | a review can't go for approval until it passes |
+| Approvals | the agent asks a human to approve (`request_approval`) | reviews sent for approval: 5% → **88%**; times it approved itself: **0** |
+| A full audit trail | every action the agent takes is written to a log | a log for every test case, public on Hugging Face |
 
 **Main result**
-- The agent now completes the review workflow: right steps, real evidence, rules passed, human approval.
-- The errors that broke the workflow (looping, fake quotes) dropped sharply.
-- It costs about $15 per 1,000 reviews on one GPU.
+- Before training, the model almost never finished a review. Now it finishes almost 9 out of 10.
+- The mistakes that used to break the job (getting stuck, making up quotes) mostly went away.
+- Running it costs about $15 per 1,000 reviews on one GPU.
 
 ---
 
